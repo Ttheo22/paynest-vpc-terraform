@@ -53,10 +53,14 @@ tag {
 
 resource "aws_autoscaling_policy" "scale_up_policy" {
   name                   = "${var.project}-scale-up-policy"
-  autoscaling_group_name = var.aws_autoscaling_group.paynest_private_asg.name
-  scaling_adjustment     = 1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
+  autoscaling_group_name = aws_autoscaling_group.paynest_private_asg.name
+  policy_type           = "TargetTrackingScaling"
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value = 50.0
+  }
   
 }
 

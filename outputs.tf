@@ -10,6 +10,11 @@ output "vpc_id" {
     value = aws_subnet.private[*].id
   }
 
-  output "private_instance_id" {
-    value = aws_instance.paynest_private_instance.id
-  }
+
+output "alb_dns_name" {
+  value = aws_lb.paynest_alb.dns_name
+}
+
+output "target_group_arn" {
+  value = aws_lb_target_group.paynest_alb_target_group.arn
+}
