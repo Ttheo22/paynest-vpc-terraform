@@ -12,6 +12,16 @@ resource "aws_launch_template" "paynest_private_instance_lt" {
   name_prefix   = "${var.project}-private-instance-lt-"
   image_id      = data.aws_ami.private_instance_ami.id
   instance_type = var.instance_type
+user_data = base64encode(<<-EOF
+  #!/bin/bash
+  yum update -y
+  yum install -y httpd
+  systemctl start httpd
+  systemctl enable httpd
+  echo "<h1>PayNest - $(hostname)</h1>" > /var/www/html/index.html
+EOF
+)
+
 
 
   iam_instance_profile {
