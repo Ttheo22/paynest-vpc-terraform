@@ -1,8 +1,8 @@
 # PayNest – Production-Inspired AWS Landing Zone (Terraform)
 
-A production-inspired AWS landing zone provisioned with Terraform. The infrastructure implements a secure, highly available networking foundation following AWS architectural best practices, including multi-AZ networking, private compute, load balancing, auto scaling, and secure administrative access through AWS Systems Manager Session Manager.
+A production-inspired AWS landing zone provisioned with Terraform. The infrastructure implements a secure, highly available networking foundation following AWS architectural best practices, including multi-AZ networking, private compute, load balancing, auto scaling, storage security, and secure administrative access through AWS Systems Manager Session Manager.
 
-The solution demonstrates infrastructure-as-code principles, security-first design, and operational patterns commonly adopted in modern AWS environments.
+The solution demonstrates infrastructure-as-code principles, security-first design, and operational patterns commonly adopted in modern AWS environments — including audit-ready compliance controls.
 
 ---
 
@@ -18,6 +18,9 @@ The solution demonstrates infrastructure-as-code principles, security-first desi
 - CPU target tracking scaling policy
 - Security groups implementing least-privilege access
 - Administrative access via AWS Systems Manager Session Manager (no SSH)
+- EBS encryption enabled at account level and explicitly on root volumes
+- S3 bucket with public access block, server-side encryption, and versioning
+- Least-privilege IAM policy scoped to specific S3 bucket and actions
 - Consistent resource tagging for governance and cost allocation
 
 ---
@@ -52,6 +55,10 @@ The solution demonstrates infrastructure-as-code principles, security-first desi
          │  Private Only       Private Only       │
          │   SSM Access         SSM Access        │
          └────────────────────────────────────────┘
+
+                         S3 Bucket
+                   (Encrypted, Versioned,
+                    No Public Access)
 ```
 
 ---
@@ -67,6 +74,9 @@ The infrastructure is designed around security, high availability, and operation
 - Administrative access is provided through AWS Systems Manager Session Manager instead of SSH.
 - Security groups enforce least-privilege communication between infrastructure components.
 - The Application Load Balancer is the only public-facing component.
+- EBS volumes are encrypted at the account level and explicitly on each instance.
+- S3 buckets block all public access and enforce server-side encryption by default.
+- IAM policies follow least-privilege principles — specific actions on specific resource ARNs, no wildcards.
 
 ### High Availability
 
@@ -94,29 +104,46 @@ The infrastructure is designed around security, high availability, and operation
 | Route Tables | Public and private routing |
 | Application Load Balancer | Distributes inbound traffic |
 | Target Group | Health monitoring and request routing |
-| Launch Template | Standardized EC2 configuration |
-| Auto Scaling Group | Maintains application capacity |
+| Launch Template | Standardized EC2 configuration with encrypted EBS |
+| Auto Scaling Group | Maintains application capacity across AZs |
 | IAM Role & Instance Profile | Enables Systems Manager access |
+| IAM Policy | Least-privilege S3 access (scoped to bucket and prefix) |
 | Security Groups | Enforce network access controls |
+| S3 Bucket | Encrypted, versioned log storage |
+| S3 Public Access Block | Prevents any public exposure of bucket contents |
+| S3 Encryption Configuration | SSE-S3 (AES256) enforced on all objects |
+| EBS Encryption Default | Account-level encryption for all new volumes |
 
 ---
 
 ## Security Architecture
 
-The deployment follows a defense-in-depth approach.
+The deployment follows a defense-in-depth approach across compute, storage, and identity.
 
+**Compute**
 - No inbound SSH access
 - No public IP addresses assigned to EC2 instances
 - Private application tier isolated from direct internet access
 - Security groups restrict traffic between infrastructure layers
 - Administrative access exclusively through AWS Systems Manager Session Manager
-- Session activity can be audited through AWS CloudTrail and Systems Manager logging
+- EBS root volumes encrypted (gp3, 30GB) with account-level encryption default
+
+**Storage**
+- S3 bucket blocks all four public access settings
+- Server-side encryption enforced using AES256 (SSE-S3)
+- Versioning enabled for object recovery and audit trail
+
+**Identity**
+- IAM policy uses `aws_iam_policy_document` data source for Terraform-validated JSON
+- Policy scoped to specific actions (`s3:GetObject`, `s3:PutObject`, `s3:ListBucket`)
+- Policy scoped to specific resource ARNs — no wildcard actions or resources
+- Explicit `effect = "Allow"` on all statements for audit clarity
 
 ---
 
 ## Terraform Implementation
 
-Key Terraform features used throughout the deployment include:
+Key Terraform features used throughout the deployment:
 
 - Infrastructure as Code
 - Reusable input variables
@@ -125,7 +152,8 @@ Key Terraform features used throughout the deployment include:
 - Collection expressions (`[*]`)
 - `merge()` for tag composition
 - `base64encode()` for EC2 user data
-- `jsonencode()` for IAM policy generation
+- `aws_iam_policy_document` data source for validated IAM policy generation
+- `aws_caller_identity` data source for account-aware resource naming
 - Dynamic AMI lookup using data sources
 - Automatic dependency management through resource references
 
@@ -134,14 +162,12 @@ Key Terraform features used throughout the deployment include:
 ## Repository Structure
 
 ```text
-## Repository Structure
-
-```text
 .
 ├── alb.tf           # Application Load Balancer, Target Group, and Listener
-├── compute.tf       # Launch Template, Auto Scaling Group, and Scaling Policy
-├── iam.tf           # IAM Role and Instance Profile for Systems Manager
+├── compute.tf       # Launch Template, Auto Scaling Group, Scaling Policy, EBS encryption
+├── iam.tf           # IAM Role, Instance Profile, and least-privilege S3 policy
 ├── main.tf          # Provider configuration and networking resources
+├── s3.tf            # S3 bucket, public access block, encryption, and versioning
 ├── security.tf      # Security Groups
 ├── variables.tf     # Input variables
 ├── outputs.tf       # Terraform outputs
@@ -156,7 +182,6 @@ Clone the repository.
 
 ```bash
 git clone https://github.com/Ttheo22/paynest-vpc-terraform.git
-
 cd paynest-vpc-terraform
 ```
 
@@ -216,7 +241,7 @@ terraform destroy
 ## Outputs
 
 | Output | Description |
-|---------|-------------|
+|--------|-------------|
 | vpc_id | VPC identifier |
 | public_subnet_ids | Public subnet IDs |
 | private_subnet_ids | Private subnet IDs |
@@ -230,12 +255,14 @@ terraform destroy
 The deployed infrastructure was validated by confirming:
 
 - Successful Terraform provisioning
-- Healthy ALB target registration
+- Healthy ALB target registration across both AZs
 - HTTP traffic routed exclusively through the ALB
 - EC2 instances inaccessible from the public internet
 - Administrative access functioning through Systems Manager Session Manager
 - Outbound internet connectivity from private instances through the NAT Gateway
 - Auto Scaling maintaining the desired application capacity
+- S3 bucket created with public access blocked, AES256 encryption, and versioning enabled
+- EBS volumes encrypted on all instances
 
 ---
 
@@ -254,7 +281,8 @@ This deployment provisions billable AWS resources including:
 - NAT Gateway
 - Elastic IP
 - Application Load Balancer
-- EC2 instances
+- EC2 instances (x2)
+- S3 storage and requests
 - Data transfer
 
 Destroy the infrastructure after testing to avoid unnecessary charges.
@@ -286,10 +314,13 @@ Future enhancements include:
 - Infrastructure as Code with Terraform
 - Multi-AZ network architecture
 - Private application infrastructure
-- Load balancing and health checks
-- Auto Scaling
+- Load balancing with health checks
+- Auto Scaling based on CPU utilization
 - Least-privilege security model
 - Systems Manager administrative access
+- EBS encryption at account and resource level
+- S3 security controls (public access block, encryption, versioning)
+- Audit-ready IAM policy with no wildcard actions or resources
 - Dynamic infrastructure provisioning
 - Consistent resource governance through tagging
 
