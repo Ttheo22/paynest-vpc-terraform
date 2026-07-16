@@ -1,9 +1,9 @@
 resource "aws_lb" "paynest_alb" {
-  name               = "${var.project}-alb"
-  internal           = false
-  security_groups    = [aws_security_group.paynest_alb_sg.id]
-  subnets            = aws_subnet.public[*].id
-  load_balancer_type = "application"
+  name                       = "${var.project}-alb"
+  internal                   = false
+  security_groups            = [aws_security_group.paynest_alb_sg.id]
+  subnets                    = aws_subnet.public[*].id
+  load_balancer_type         = "application"
   enable_deletion_protection = false
 
   tags = merge(local.common_tags, { Name = "${var.project}-alb" })

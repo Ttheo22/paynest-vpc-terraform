@@ -30,15 +30,15 @@ variable "availability_zones" {
 }
 
 variable "project" {
-    description = "The project name for tagging resources"
-    type        = string
-  default = "Paynest"
+  description = "The project name for tagging resources"
+  type        = string
+  default     = "Paynest"
 }
 
 variable "environment" {
-    description = "The environment name"
-    type        = string
-  default = "Dev"
+  description = "The environment name"
+  type        = string
+  default     = "Dev"
 }
 
 variable "instance_type" {

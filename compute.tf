@@ -12,7 +12,7 @@ resource "aws_launch_template" "paynest_private_instance_lt" {
   name_prefix   = "${var.project}-private-instance-lt-"
   image_id      = data.aws_ami.private_instance_ami.id
   instance_type = var.instance_type
-user_data = base64encode(<<-EOF
+  user_data = base64encode(<<-EOF
   #!/bin/bash
   yum update -y
   yum install -y httpd
@@ -20,9 +20,7 @@ user_data = base64encode(<<-EOF
   systemctl enable httpd
   echo "<h1>PayNest - $(hostname)</h1>" > /var/www/html/index.html
 EOF
-)
-
-
+  )
 
   iam_instance_profile {
     name = aws_iam_instance_profile.ssm_instance_profile.name
@@ -34,44 +32,57 @@ EOF
   }
 
   tags = merge(local.common_tags, { Name = "${var.project}-private-instance" })
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_size           = 20
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
 }
 
 resource "aws_autoscaling_group" "paynest_private_asg" {
-  name                      = "${var.project}-private-asg"
-  max_size                  = 3
-  min_size                  = 1
-  desired_capacity          = 2
-  vpc_zone_identifier       = aws_subnet.private[*].id
-  target_group_arns         = [aws_lb_target_group.paynest_alb_target_group.arn]
+  name                = "${var.project}-private-asg"
+  max_size            = 3
+  min_size            = 1
+  desired_capacity    = 2
+  vpc_zone_identifier = aws_subnet.private[*].id
+  target_group_arns   = [aws_lb_target_group.paynest_alb_target_group.arn]
   launch_template {
     id      = aws_launch_template.paynest_private_instance_lt.id
     version = "$Latest"
   }
 
-tag {
-  key                 = "Project"
-  value               = var.project
-  propagate_at_launch = true
-}
+  tag {
+    key                 = "Project"
+    value               = var.project
+    propagate_at_launch = true
+  }
 
-tag {
-  key                 = "Environment"
-  value               = var.environment
-  propagate_at_launch = true
-}
+  tag {
+    key                 = "Environment"
+    value               = var.environment
+    propagate_at_launch = true
+  }
 }
 
 resource "aws_autoscaling_policy" "scale_up_policy" {
   name                   = "${var.project}-scale-up-policy"
   autoscaling_group_name = aws_autoscaling_group.paynest_private_asg.name
-  policy_type           = "TargetTrackingScaling"
+  policy_type            = "TargetTrackingScaling"
   target_tracking_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageCPUUtilization"
     }
     target_value = 50.0
   }
-  
+
 }
 
-
+resource "aws_ebs_encryption_by_default" "enabled" {
+  enabled = true
+}
